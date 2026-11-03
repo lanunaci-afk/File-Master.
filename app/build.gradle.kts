@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -30,5 +31,10 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // Word DOCX
     implementation("org.apache.poi:poi-ooxml:5.3.0")
+
+    // PowerPoint PPT и PPTX
+    implementation("org.apache.poi:poi-scratchpad:5.3.0")
 }
