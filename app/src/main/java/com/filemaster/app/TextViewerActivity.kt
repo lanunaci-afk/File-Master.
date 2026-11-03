@@ -1,42 +1,119 @@
+
 package com.filemaster.app
 
 import android.app.Activity
 import android.os.Bundle
 import android.graphics.Color
-import android.view.Gravity
 import android.widget.*
 import org.apache.poi.xwpf.usermodel.XWPFDocument
+import org.apache.poi.xslf.usermodel.XMLSlideShow
+import org.apache.poi.xslf.usermodel.XSLFTextShape
+import org.apache.poi.hslf.usermodel.HSLFSlideShow
+import org.apache.poi.hslf.usermodel.HSLFTextShape
 import java.util.zip.ZipInputStream
 
 class TextViewerActivity : Activity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         val uri = intent.data
         val name = intent.getStringExtra("name") ?: "Документ"
         val archive = intent.getBooleanExtra("archive", false)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18,24,18,18); setBackgroundColor(Color.rgb(16,17,22)) }
-        val title = TextView(this).apply { text = name; textSize = 20f; setTextColor(Color.WHITE) }
-        val body = TextView(this).apply { textSize = 15f; setTextColor(Color.LTGRAY); setPadding(0,20,0,0) }
-        root.addView(title); root.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1,0,1f))
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 24, 18, 18)
+            setBackgroundColor(Color.rgb(16, 17, 22))
+        }
+
+        val title = TextView(this).apply {
+            text = name
+            textSize = 20f
+            setTextColor(Color.WHITE)
+        }
+
+        val body = TextView(this).apply {
+            textSize = 15f
+            setTextColor(Color.LTGRAY)
+            setPadding(0, 20, 0, 0)
+        }
+
+        root.addView(title)
+        root.addView(
+            ScrollView(this).apply {
+                addView(body)
+            },
+            LinearLayout.LayoutParams(-1, 0, 1f)
+        )
+
         setContentView(root)
+
         try {
-            val input = contentResolver.openInputStream(uri!!)!!
-            val result = if (archive) {
-                val zis = ZipInputStream(input)
-                val entries = mutableListOf<String>()
-                var e = zis.nextEntry
-                while (e != null) { entries.add((if(e.isDirectory) "📁 " else "📄 ") + e.name); e = zis.nextEntry }
-                zis.close()
-                "Содержимое ZIP-архива:\n\n" + entries.joinToString("\n")
-            } else if (name.endsWith(".docx", true)) {
-                val doc = XWPFDocument(input)
-                doc.paragraphs.joinToString("\n\n") { it.text }
-            } else {
-                input.bufferedReader().use { it.readText() }
+            val result = contentResolver.openInputStream(uri!!)?.use { input ->
+
+                when {
+                    archive -> {
+                        val zis = ZipInputStream(input)
+                        val entries = mutableListOf<String>()
+
+                        var entry = zis.nextEntry
+                        while (entry != null) {
+                            entries.add(
+                                (if (entry.isDirectory) "📁 " else "📄 ") + entry.name
+                            )
+                            entry = zis.nextEntry
+                        }
+
+                        zis.close()
+                        "Содержимое ZIP-архива:\n\n" +
+                            entries.joinToString("\n")
+                    }
+
+                    name.endsWith(".docx", true) -> {
+                        XWPFDocument(input).use { doc ->
+                            doc.paragraphs.joinToString("\n\n") { it.text }
+                        }
+                    }
+
+                    name.endsWith(".pptx", true) -> {
+                        XMLSlideShow(input).use { ppt ->
+                            ppt.slides.mapIndexed { index, slide ->
+                                val texts = slide.shapes
+                                    .filterIsInstance<XSLFTextShape>()
+                                    .mapNotNull { it.text.takeIf { text -> text.isNotBlank() } }
+
+                                "СЛАЙД ${index + 1}\n\n" +
+                                    texts.joinToString("\n")
+                            }.joinToString("\n\n--------------------\n\n")
+                        }
+                    }
+
+                    name.endsWith(".ppt", true) -> {
+                        HSLFSlideShow(input).use { ppt ->
+                            ppt.slides.mapIndexed { index, slide ->
+                                val texts = slide.shapes
+                                    .filterIsInstance<HSLFTextShape>()
+                                    .mapNotNull { it.text.takeIf { text -> text.isNotBlank() } }
+
+                                "СЛАЙД ${index + 1}\n\n" +
+                                    texts.joinToString("\n")
+                            }.joinToString("\n\n--------------------\n\n")
+                        }
+                    }
+
+                    else -> {
+                        input.bufferedReader().use { it.readText() }
+                    }
+                }
+            } ?: "Не удалось открыть файл."
+
+            body.text = result.ifBlank {
+                "В документе нет извлекаемого текста."
             }
-            body.text = result.ifBlank { "В документе нет извлекаемого текста." }
+
         } catch (e: Exception) {
-            body.text = "Не удалось прочитать документ: ${e.message}\n\nПоддерживается просмотр текста DOCX. Старый формат DOC может потребовать внешний офисный просмотрщик."
+            body.text = "Ошибка чтения документа:\n${e.message}"
         }
     }
 }
